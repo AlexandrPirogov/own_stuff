@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 
@@ -29,9 +30,9 @@ type Coffee struct {
 }
 
 var (
-	client               *mongo.Client
-	coffeesCollection    *mongo.Collection
-	requestsCollection   *mongo.Collection
+	client             *mongo.Client
+	coffeesCollection  *mongo.Collection
+	requestsCollection *mongo.Collection
 )
 
 func main() {
@@ -44,10 +45,9 @@ func main() {
 		panic(err)
 	}
 	defer client.Disconnect(ctx)
-	
+
 	coffeesCollection = client.Database("coffee_shop").Collection("coffees")
 	requestsCollection = client.Database("coffee_shop").Collection("requests")
-
 
 	// Initialize Chi router
 	router := chi.NewRouter()
@@ -70,7 +70,7 @@ func coffeeHandler(w http.ResponseWriter, r *http.Request) {
 	var coffees []Coffee
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cur, err := collection.Find(ctx, map[string]interface{}{})
+	cur, err := coffeesCollection.Find(ctx, map[string]interface{}{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	var coffee Coffee
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err = collection.FindOne(ctx, Coffee{ID: coffeeID}).Decode(&coffee)
+	err = coffeesCollection.FindOne(ctx, Coffee{ID: coffeeID}).Decode(&coffee)
 	if err != nil {
 		http.Error(w, "Coffee not found", http.StatusNotFound)
 		return
@@ -126,7 +126,7 @@ func importCoffeeHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, coffee := range coffees {
-		_, err := collection.InsertOne(ctx, coffee)
+		_, err := coffeesCollection.InsertOne(ctx, coffee)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -164,16 +164,10 @@ func logRequestsToMongo(next http.Handler) http.Handler {
 			RequestTime: time.Now(),
 		}
 
-		// Convert to JSON
-		requestLogJSON, err := json.Marshal(requestLog)
-		if err != nil {
-			log.Println("Error marshalling request log:", err)
-		}
-
 		// Insert request log into MongoDB collection
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err = requestsCollection.InsertOne(ctx, requestLog)
+		_, err := requestsCollection.InsertOne(ctx, requestLog)
 		if err != nil {
 			log.Println("Error inserting request log into MongoDB:", err)
 		}
