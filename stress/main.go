@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	baseURL  = "http://localhost:8080"
+	baseURL  = "http://coffee_shop:8080"
 	workers  = 10 // Number of concurrent workers
-	requests = 100 // Number of requests per worker
+	requests = 10000 // Number of requests per worker
 )
 
 func main() {

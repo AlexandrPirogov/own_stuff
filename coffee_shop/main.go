@@ -15,8 +15,9 @@ import (
 )
 
 type Coffee struct {
-	Name  string `json:"name"`
-	Price int    `json:"price"`
+	ID    string `json:"_id" bson:"_id"`
+	Name  string `json:"name" bson:"name"`
+	Price int    `json:"price" bson:"price"`
 }
 
 var (
@@ -26,7 +27,7 @@ var (
 
 func main() {
 	// Set up MongoDB client
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	clientOptions := options.Client().ApplyURI("mongodb://admin:admin@coffee_db:27017")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	client, err := mongo.Connect(ctx, clientOptions)
@@ -57,7 +58,7 @@ func coffeeHandler(w http.ResponseWriter, r *http.Request) {
 	var coffees []Coffee
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cur, err := collection.Find(ctx, nil)
+	cur, err := collection.Find(ctx, map[string]interface{}{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -81,7 +82,7 @@ func coffeeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func buyHandler(w http.ResponseWriter, r *http.Request) {
-	var coffeeID int
+	var coffeeID string
 	err := json.NewDecoder(r.Body).Decode(&coffeeID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
