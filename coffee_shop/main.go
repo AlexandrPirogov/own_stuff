@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -31,25 +32,28 @@ func main() {
 	defer cancel()
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer client.Disconnect(ctx)
 
 	collection = client.Database("coffee_shop").Collection("coffees")
 
-	http.HandleFunc("/coffees", coffeeHandler)
-	http.HandleFunc("/buy", buyHandler)
+	// Initialize Chi router
+	router := chi.NewRouter()
 
+	// Add middleware
+	router.Use(middleware.Logger)
+
+	// Define routes
+	router.Get("/coffees", coffeeHandler)
+	router.Post("/buy", buyHandler)
+
+	// Start server
 	fmt.Println("Server is listening on port 8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.ListenAndServe(":8080", router)
 }
 
 func coffeeHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var coffees []Coffee
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -62,12 +66,14 @@ func coffeeHandler(w http.ResponseWriter, r *http.Request) {
 	for cur.Next(ctx) {
 		var coffee Coffee
 		if err := cur.Decode(&coffee); err != nil {
-			log.Fatal(err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		coffees = append(coffees, coffee)
 	}
 	if err := cur.Err(); err != nil {
-		log.Fatal(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -75,11 +81,6 @@ func coffeeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func buyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var coffeeID int
 	err := json.NewDecoder(r.Body).Decode(&coffeeID)
 	if err != nil {
