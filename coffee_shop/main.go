@@ -14,6 +14,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+type RequestLog struct {
+	Path        string    `json:"path"`
+	Method      string    `json:"method"`
+	Host        string    `json:"host"`
+	RemoteAddr  string    `json:"remote_addr"`
+	RequestTime time.Time `json:"request_time"`
+}
+
 type Coffee struct {
 	ID    string `json:"_id" bson:"_id"`
 	Name  string `json:"name" bson:"name"`
@@ -35,14 +43,17 @@ func main() {
 		panic(err)
 	}
 	defer client.Disconnect(ctx)
+	
+	coffeesCollection = client.Database("coffee_shop").Collection("coffees")
+	requestsCollection = client.Database("coffee_shop").Collection("requests")
 
-	collection = client.Database("coffee_shop").Collection("coffees")
 
 	// Initialize Chi router
 	router := chi.NewRouter()
 
 	// Add middleware
 	router.Use(middleware.Logger)
+	router.Use(logRequestsToMongo)
 
 	// Define routes
 	router.Get("/coffees", coffeeHandler)
@@ -140,4 +151,32 @@ func readCoffeeFile(filename string) ([]Coffee, error) {
 	}
 
 	return coffees, nil
+}
+
+func logRequestsToMongo(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestLog := RequestLog{
+			Path:        r.URL.Path,
+			Method:      r.Method,
+			Host:        r.Host,
+			RemoteAddr:  r.RemoteAddr,
+			RequestTime: time.Now(),
+		}
+
+		// Convert to JSON
+		requestLogJSON, err := json.Marshal(requestLog)
+		if err != nil {
+			log.Println("Error marshalling request log:", err)
+		}
+
+		// Insert request log into MongoDB collection
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err = requestsCollection.InsertOne(ctx, requestLog)
+		if err != nil {
+			log.Println("Error inserting request log into MongoDB:", err)
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
