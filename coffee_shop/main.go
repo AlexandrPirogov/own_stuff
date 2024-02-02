@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -13,11 +14,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Coffee struct represents a type of coffee available in the shop
 type Coffee struct {
-	ID    int    `json:"id" bson:"_id"`
-	Name  string `json:"name" bson:"name"`
-	Price int    `json:"price" bson:"price"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
 }
 
 var (
@@ -47,7 +46,7 @@ func main() {
 	// Define routes
 	router.Get("/coffees", coffeeHandler)
 	router.Post("/buy", buyHandler)
-	router.Post("/coffees", createCoffeeHandler) // New handler for creating a coffee instance
+	router.Post("/import", importCoffeeHandler) // New handler for importing coffee instances
 
 	// Start server
 	fmt.Println("Server is listening on port 8080...")
@@ -64,31 +63,42 @@ func buyHandler(w http.ResponseWriter, r *http.Request) {
 	// Omitted for brevity
 }
 
-func createCoffeeHandler(w http.ResponseWriter, r *http.Request) {
-	// Define a struct to receive JSON request
-	type CoffeeRequest struct {
-		Name  string `json:"name"`
-		Price int    `json:"price"`
-	}
-
-	// Parse JSON request body
-	var coffeeReq CoffeeRequest
-	err := json.NewDecoder(r.Body).Decode(&coffeeReq)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Insert new coffee instance into the database
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err = collection.InsertOne(ctx, Coffee{Name: coffeeReq.Name, Price: coffeeReq.Price})
+func importCoffeeHandler(w http.ResponseWriter, r *http.Request) {
+	// Read coffee instances from JSON file
+	coffees, err := readCoffeeFile("coffees.json")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Insert coffee instances into the database
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, coffee := range coffees {
+		_, err := collection.InsertOne(ctx, coffee)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// Respond with success message
-	response := fmt.Sprintf("New coffee created: %s - Price: %d", coffeeReq.Name, coffeeReq.Price)
+	response := fmt.Sprintf("Imported %d coffee instances into the database", len(coffees))
 	w.Write([]byte(response))
+}
+
+func readCoffeeFile(filename string) ([]Coffee, error) {
+	// Open JSON file
+	file, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal JSON content into slice of Coffee structs
+	var coffees []Coffee
+	if err := json.Unmarshal(file, &coffees); err != nil {
+		return nil, err
+	}
+
+	return coffees, nil
 }
