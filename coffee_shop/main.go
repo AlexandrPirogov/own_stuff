@@ -29,8 +29,9 @@ type Coffee struct {
 }
 
 var (
-	client     *mongo.Client
-	collection *mongo.Collection
+	client               *mongo.Client
+	coffeesCollection    *mongo.Collection
+	requestsCollection   *mongo.Collection
 )
 
 func main() {
